@@ -14,6 +14,7 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 function publicAssetsPlugin() {
   const FONTS_ID = 'virtual:fonts'
   const FRAMES_ID = 'virtual:frames'
+  const EXTRAS_ID = 'virtual:extras'
 
   return {
     name: 'public-assets-discovery',
@@ -21,6 +22,7 @@ function publicAssetsPlugin() {
     resolveId(id) {
       if (id === FONTS_ID) return '\0' + FONTS_ID
       if (id === FRAMES_ID) return '\0' + FRAMES_ID
+      if (id === EXTRAS_ID) return '\0' + EXTRAS_ID
     },
 
     load(id) {
@@ -40,18 +42,27 @@ function publicAssetsPlugin() {
           .sort()
         return `export const frames = ${JSON.stringify(frames)}`
       }
+
+      if (id === '\0' + EXTRAS_ID) {
+        const dir = resolve(process.cwd(), 'public/extras')
+        const extras = readdirSync(dir)
+          .filter((f) => /\.(png|jpg|jpeg|webp)$/i.test(f))
+          .sort()
+        return `export const extras = ${JSON.stringify(extras)}`
+      }
     },
 
     handleHotUpdate({ file, server }) {
-      const isLetters = file.replace(/\\/g, '/').includes('/public/letters/')
-      const isFrames = file.replace(/\\/g, '/').includes('/public/frames/')
-      if (isLetters || isFrames) {
-        const fontsId = '\0' + FONTS_ID
-        const framesId = '\0' + FRAMES_ID
-        const mod1 = server.moduleGraph.getModuleById(fontsId)
-        const mod2 = server.moduleGraph.getModuleById(framesId)
-        if (mod1) server.moduleGraph.invalidateModule(mod1)
-        if (mod2) server.moduleGraph.invalidateModule(mod2)
+      const normalized = file.replace(/\\/g, '/')
+      const isLetters = normalized.includes('/public/letters/')
+      const isFrames = normalized.includes('/public/frames/')
+      const isExtras = normalized.includes('/public/extras/')
+      if (isLetters || isFrames || isExtras) {
+        const ids = ['\0' + FONTS_ID, '\0' + FRAMES_ID, '\0' + EXTRAS_ID]
+        ids.forEach((mid) => {
+          const mod = server.moduleGraph.getModuleById(mid)
+          if (mod) server.moduleGraph.invalidateModule(mod)
+        })
         server.ws.send({ type: 'full-reload' })
       }
     },

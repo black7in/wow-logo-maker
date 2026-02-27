@@ -32,7 +32,7 @@ const frameConfig = computed(() => {
     y: (STAGE_H - h) / 2,
     width: w,
     height: h,
-    listening: false, // no intercepta clicks, pasan al stage
+    listening: false,
   }
 })
 
@@ -59,34 +59,67 @@ const mainGroupRef = ref(null)
 const subGroupRef = ref(null)
 const transformerRef = ref(null)
 
-// ── Selección ─────────────────────────────────────────────────────────────────
-function selectGroup(groupRef) {
-  const group = groupRef.value?.getNode()
-  const tr = transformerRef.value?.getNode()
-  if (!group || !tr) return
-  tr.nodes([group])
-  tr.getLayer()?.batchDraw()
-}
+// Map no reactivo para refs de extras (se lee sólo en handlers de eventos)
+const extraNodeRefs = new Map()
 
-function deselect() {
-  const tr = transformerRef.value?.getNode()
-  if (!tr) return
-  tr.nodes([])
-  tr.getLayer()?.batchDraw()
-}
+// Función-refs para grupos de texto (evita que Vue los convierta en array dentro del v-for)
+function setMainRef(el) { if (el) mainGroupRef.value = el }
+function setSubRef(el)  { if (el) subGroupRef.value = el }
 
-/**
- * Solo desselecciona cuando el click cae directamente en el stage
- * (no sobre ninguna figura). Funciona porque el fondo y el frame
- * tienen listening:false y los clicks los "atraviesan".
- */
-function onStageClick(e) {
-  if (e.target === e.target.getStage()) {
-    deselect()
+function setExtraRef(id) {
+  return (el) => {
+    if (el) extraNodeRefs.set(id, el)
+    else extraNodeRefs.delete(id)
   }
 }
 
-// ── Posicionamiento inicial ───────────────────────────────────────────────────
+// ── Lista ordenada para renderizado (bottom→top) ──────────────────────────────
+const orderedItems = computed(() => {
+  const byId = new Map(state.extras.map((e) => [e.id, e]))
+  return state.zOrder.map((id) => ({
+    id,
+    type: id === 'mainText' ? 'main' : id === 'subText' ? 'sub' : 'extra',
+    entry: byId.get(id) ?? null,
+  }))
+})
+
+// ── Selección ─────────────────────────────────────────────────────────────────
+// selectItem solo actualiza el estado; el watcher es quien adjunta/limpia el transformer.
+// Así tanto los clics del canvas como los del panel Objetos funcionan igual.
+function selectItem(id) {
+  state.selectedItemId = id
+}
+
+// Fuente única de verdad para el transformer: reacciona a cualquier cambio de selectedItemId
+watch(
+  () => state.selectedItemId,
+  (newId) => {
+    const tr = transformerRef.value?.getNode()
+    if (!tr) return
+    if (newId === null) {
+      tr.nodes([])
+      tr.getLayer()?.batchDraw()
+      return
+    }
+    let node = null
+    if (newId === 'mainText')     node = mainGroupRef.value?.getNode()
+    else if (newId === 'subText') node = subGroupRef.value?.getNode()
+    else                          node = extraNodeRefs.get(newId)?.getNode()
+    if (node) {
+      tr.nodes([node])
+      tr.getLayer()?.batchDraw()
+    }
+  },
+  { flush: 'post' },  // dispara DESPUÉS del DOM → extraNodeRefs ya tiene el nodo recién montado
+)
+
+function onStageClick(e) {
+  if (e.target === e.target.getStage()) {
+    state.selectedItemId = null
+  }
+}
+
+// ── Posicionamiento inicial de textos ─────────────────────────────────────────
 const mainPositioned = ref(false)
 watch(mainLetters, (letters) => {
   if (mainPositioned.value || !letters.length) return
@@ -112,6 +145,31 @@ watch(subLetters, (letters) => {
   }
   subPositioned.value = true
 })
+
+// ── Posicionamiento inicial de extras (cuando carga la imagen) ────────────────
+watch(
+  () => state.extras.map((e) => !!e.img),
+  () => {
+    const stage = stageRef.value?.getNode()
+    state.extras.forEach((entry) => {
+      if (!entry.img || entry.positioned) return
+      const node = extraNodeRefs.get(entry.id)?.getNode()
+      if (!node) return
+      const w = 200
+      const h = entry.img.naturalHeight * (w / entry.img.naturalWidth)
+      node.x(Math.max(20, (STAGE_W - w) / 2))
+      node.y(Math.max(20, (STAGE_H - h) / 2))
+      entry.positioned = true
+      // Si este extra está seleccionado, reajusta el transformer a los bounds reales
+      if (state.selectedItemId === entry.id) {
+        const tr = transformerRef.value?.getNode()
+        if (tr) tr.nodes([node])
+      }
+    })
+    stage?.batchDraw()  // más fiable que node.getLayer()?.batchDraw()
+  },
+  { flush: 'post' },  // dispara DESPUÉS del DOM → v-image ya está montada en Konva
+)
 
 // ── Exportar ──────────────────────────────────────────────────────────────────
 function exportToPng() {
@@ -166,44 +224,72 @@ defineExpose({ exportToPng })
         <v-image v-if="frameConfig" :config="frameConfig" />
       </v-layer>
 
-      <!-- Textos + Transformer en la misma capa -->
+      <!-- Textos + Extras + Transformer en la misma capa (z-order controlado por orderedItems) -->
       <v-layer>
-        <v-group
-          ref="mainGroupRef"
-          :config="{ x: 100, y: 200, draggable: true }"
-          @click="selectGroup(mainGroupRef)"
-        >
-          <v-image
-            v-for="letter in mainLetters"
-            :key="letter.key"
-            :config="{
-              image: letter.img,
-              x: letter.x,
-              y: letter.y,
-              width: letter.width,
-              height: letter.height,
-            }"
-          />
-        </v-group>
+        <template v-for="item in orderedItems" :key="item.id">
 
-        <v-group
-          ref="subGroupRef"
-          :config="{ x: 100, y: 400, draggable: true }"
-          @click="selectGroup(subGroupRef)"
-        >
-          <v-image
-            v-for="letter in subLetters"
-            :key="letter.key"
-            :config="{
-              image: letter.img,
-              x: letter.x,
-              y: letter.y,
-              width: letter.width,
-              height: letter.height,
-            }"
-          />
-        </v-group>
+          <!-- Texto principal -->
+          <v-group
+            v-if="item.type === 'main'"
+            :ref="setMainRef"
+            :config="{ x: 100, y: 200, draggable: true }"
+            @click="selectItem('mainText')"
+          >
+            <v-image
+              v-for="letter in mainLetters"
+              :key="letter.key"
+              :config="{
+                image: letter.img,
+                x: letter.x,
+                y: letter.y,
+                width: letter.width,
+                height: letter.height,
+              }"
+            />
+          </v-group>
 
+          <!-- Subtexto -->
+          <v-group
+            v-else-if="item.type === 'sub'"
+            :ref="setSubRef"
+            :config="{ x: 100, y: 400, draggable: true }"
+            @click="selectItem('subText')"
+          >
+            <v-image
+              v-for="letter in subLetters"
+              :key="letter.key"
+              :config="{
+                image: letter.img,
+                x: letter.x,
+                y: letter.y,
+                width: letter.width,
+                height: letter.height,
+              }"
+            />
+          </v-group>
+
+          <!-- Extra -->
+          <v-group
+            v-else-if="item.entry"
+            :ref="setExtraRef(item.id)"
+            :config="{ draggable: true }"
+            @click="selectItem(item.id)"
+          >
+            <v-image
+              v-if="item.entry.img"
+              :config="{
+                image: item.entry.img,
+                x: 0,
+                y: 0,
+                width: 200,
+                height: item.entry.img.naturalHeight * 200 / item.entry.img.naturalWidth,
+              }"
+            />
+          </v-group>
+
+        </template>
+
+        <!-- Transformer siempre encima -->
         <v-transformer
           ref="transformerRef"
           :config="{

@@ -1,16 +1,48 @@
 <script setup>
-import { reactive } from 'vue'
-import { state } from '@/store/editor'
+import { reactive, ref } from 'vue'
+import { state, addExtra, removeExtra, moveItemUp, moveItemDown } from '@/store/editor'
 import { fonts } from 'virtual:fonts'
 import { frames } from 'virtual:frames'
+import { extras } from 'virtual:extras'
 
 const emit = defineEmits(['export'])
 
-const open = reactive({ main: true, sub: false, fondo: false, marco: false })
+const open = reactive({ main: true, sub: false, fondo: false, marco: false, extras: false })
 function toggle(key) { open[key] = !open[key] }
 
 function frameLabel(f) { return f.replace(/\.[^.]+$/, '').replace(/-/g, ' ') }
-function fontLabel(n)  { return n.replace(/-/g, ' ') }
+function fontLabel(n) { return n.replace(/-/g, ' ') }
+function extraLabel(f) { return f.replace(/\.[^.]+$/, '').replace(/-/g, ' ') }
+
+function itemLabel(id) {
+  if (id === 'mainText') return 'Texto principal'
+  if (id === 'subText') return 'Subtexto'
+  const entry = state.extras.find((e) => e.id === id)
+  return entry ? extraLabel(entry.src.split('/').pop()) : id
+}
+
+// ── Panel flotante de objetos ─────────────────────────────────────────────────
+const showObjects = ref(false)
+const panelX = ref(288)   // justo a la derecha del tab
+const panelY = ref(80)
+
+let _dragOffX = 0
+let _dragOffY = 0
+
+function startDrag(e) {
+  _dragOffX = e.clientX - panelX.value
+  _dragOffY = e.clientY - panelY.value
+  window.addEventListener('mousemove', onDrag)
+  window.addEventListener('mouseup', stopDrag)
+}
+function onDrag(e) {
+  panelX.value = e.clientX - _dragOffX
+  panelY.value = e.clientY - _dragOffY
+}
+function stopDrag() {
+  window.removeEventListener('mousemove', onDrag)
+  window.removeEventListener('mouseup', stopDrag)
+}
 </script>
 
 <template>
@@ -20,168 +52,188 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
     </header>
 
     <div class="panel-scroll">
-    <!-- ══ TEXTO PRINCIPAL ══ -->
-    <div class="acc-item">
-      <button class="acc-header" @click="toggle('main')">
-        <span>Texto principal</span>
-        <span class="chevron" :class="{ open: open.main }"></span>
-      </button>
-      <div class="acc-body" :class="{ open: open.main }">
-        <div class="acc-inner">
-          <section class="section">
-            <label class="label">Texto</label>
-            <input
-              v-model="state.text"
-              type="text"
-              class="text-input"
-              placeholder="Escribe tu logo…"
-              maxlength="40"
-            />
-          </section>
+      <!-- ══ TEXTO PRINCIPAL ══ -->
+      <div class="acc-item">
+        <button class="acc-header" @click="toggle('main')">
+          <span>Texto principal</span>
+          <span class="chevron" :class="{ open: open.main }"></span>
+        </button>
+        <div class="acc-body" :class="{ open: open.main }">
+          <div class="acc-inner">
+            <section class="section">
+              <label class="label">Texto</label>
+              <input v-model="state.text" type="text" class="text-input" placeholder="Escribe tu logo…"
+                maxlength="40" />
+            </section>
 
-          <section class="section">
-            <label class="label">Tipo de letra</label>
-            <div class="font-list">
-              <button
-                v-for="font in fonts"
-                :key="font"
-                class="font-btn"
-                :class="{ active: state.selectedFont === font }"
-                @click="state.selectedFont = font"
-              >{{ fontLabel(font) }}</button>
-            </div>
-          </section>
+            <section class="section">
+              <label class="label">Tipo de letra</label>
+              <div class="font-list">
+                <button v-for="font in fonts" :key="font" class="font-btn"
+                  :class="{ active: state.selectedFont === font }" @click="state.selectedFont = font">{{ fontLabel(font)
+                  }}</button>
+              </div>
+            </section>
 
-          <section class="section">
-            <label class="label">
-              Tamaño <span class="label-value">{{ state.fontSize }}px</span>
-            </label>
-            <input v-model.number="state.fontSize" type="range" min="40" max="300" step="2" class="slider" />
-            <label class="label mt">
-              Espaciado <span class="label-value">{{ state.spacing }}px</span>
-            </label>
-            <input v-model.number="state.spacing" type="range" min="-10" max="40" step="1" class="slider" />
-          </section>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══ SUBTEXTO ══ -->
-    <div class="acc-item">
-      <button class="acc-header" @click="toggle('sub')">
-        <span>Subtexto</span>
-        <span class="chevron" :class="{ open: open.sub }"></span>
-      </button>
-      <div class="acc-body" :class="{ open: open.sub }">
-        <div class="acc-inner">
-          <section class="section">
-            <label class="label">Texto</label>
-            <input
-              v-model="state.subText"
-              type="text"
-              class="text-input"
-              placeholder="Subtítulo opcional…"
-              maxlength="60"
-            />
-          </section>
-
-          <section class="section">
-            <label class="label">Tipo de letra</label>
-            <div class="font-list">
-              <button
-                v-for="font in fonts"
-                :key="font"
-                class="font-btn"
-                :class="{ active: state.subSelectedFont === font }"
-                @click="state.subSelectedFont = font"
-              >{{ fontLabel(font) }}</button>
-            </div>
-          </section>
-
-          <section class="section">
-            <label class="label">
-              Tamaño <span class="label-value">{{ state.subFontSize }}px</span>
-            </label>
-            <input v-model.number="state.subFontSize" type="range" min="20" max="200" step="2" class="slider" />
-            <label class="label mt">
-              Espaciado <span class="label-value">{{ state.subSpacing }}px</span>
-            </label>
-            <input v-model.number="state.subSpacing" type="range" min="-10" max="40" step="1" class="slider" />
-          </section>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══ FONDO ══ -->
-    <div class="acc-item">
-      <button class="acc-header" @click="toggle('fondo')">
-        <span>Fondo</span>
-        <span class="chevron" :class="{ open: open.fondo }"></span>
-      </button>
-      <div class="acc-body" :class="{ open: open.fondo }">
-        <div class="acc-inner">
-          <section class="section">
-            <div class="bg-row">
-              <button
-                class="bg-transparent-btn"
-                :class="{ active: state.bgColor === 'transparent' }"
-                title="Transparente"
-                @click="state.bgColor = 'transparent'"
-              >
-                <span class="checker" />
-                <span class="bg-btn-label">Transparente</span>
-              </button>
-              <label
-                class="bg-color-btn"
-                :class="{ active: state.bgColor !== 'transparent' }"
-                title="Elegir color"
-              >
-                <input
-                  type="color"
-                  class="color-input"
-                  :value="state.bgColor === 'transparent' ? '#000000' : state.bgColor"
-                  @input="state.bgColor = $event.target.value"
-                />
-                <span
-                  class="color-preview"
-                  :style="{ background: state.bgColor === 'transparent' ? '#1a1a1a' : state.bgColor }"
-                />
-                <span class="bg-btn-label">Color</span>
+            <section class="section">
+              <label class="label">
+                Tamaño <span class="label-value">{{ state.fontSize }}px</span>
               </label>
-            </div>
-          </section>
+              <input v-model.number="state.fontSize" type="range" min="40" max="300" step="2" class="slider" />
+              <label class="label mt">
+                Espaciado <span class="label-value">{{ state.spacing }}px</span>
+              </label>
+              <input v-model.number="state.spacing" type="range" min="-10" max="40" step="1" class="slider" />
+            </section>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- ══ MARCO ══ -->
-    <div class="acc-item">
-      <button class="acc-header" @click="toggle('marco')">
-        <span>Marco</span>
-        <span class="chevron" :class="{ open: open.marco }"></span>
-      </button>
-      <div class="acc-body" :class="{ open: open.marco }">
-        <div class="acc-inner">
-          <section class="section">
-            <div class="frames-grid">
-              <button
-                v-for="frame in frames"
-                :key="frame"
-                class="frame-btn"
-                :class="{ active: state.frameSelected === frame }"
-                :title="frameLabel(frame)"
-                @click="state.frameSelected = frame"
-              >
-                <img :src="`/frames/${frame}`" :alt="frameLabel(frame)" class="frame-thumb" />
-                <span class="frame-name">{{ frameLabel(frame) }}</span>
-              </button>
-            </div>
-          </section>
+      <!-- ══ SUBTEXTO ══ -->
+      <div class="acc-item">
+        <button class="acc-header" @click="toggle('sub')">
+          <span>Subtexto</span>
+          <span class="chevron" :class="{ open: open.sub }"></span>
+        </button>
+        <div class="acc-body" :class="{ open: open.sub }">
+          <div class="acc-inner">
+            <section class="section">
+              <label class="label">Texto</label>
+              <input v-model="state.subText" type="text" class="text-input" placeholder="Subtítulo opcional…"
+                maxlength="60" />
+            </section>
+
+            <section class="section">
+              <label class="label">Tipo de letra</label>
+              <div class="font-list">
+                <button v-for="font in fonts" :key="font" class="font-btn"
+                  :class="{ active: state.subSelectedFont === font }" @click="state.subSelectedFont = font">{{
+                    fontLabel(font) }}</button>
+              </div>
+            </section>
+
+            <section class="section">
+              <label class="label">
+                Tamaño <span class="label-value">{{ state.subFontSize }}px</span>
+              </label>
+              <input v-model.number="state.subFontSize" type="range" min="20" max="200" step="2" class="slider" />
+              <label class="label mt">
+                Espaciado <span class="label-value">{{ state.subSpacing }}px</span>
+              </label>
+              <input v-model.number="state.subSpacing" type="range" min="-10" max="40" step="1" class="slider" />
+            </section>
+          </div>
         </div>
       </div>
-    </div>
+
+      <!-- ══ FONDO ══ -->
+      <div class="acc-item">
+        <button class="acc-header" @click="toggle('fondo')">
+          <span>Fondo</span>
+          <span class="chevron" :class="{ open: open.fondo }"></span>
+        </button>
+        <div class="acc-body" :class="{ open: open.fondo }">
+          <div class="acc-inner">
+            <section class="section">
+              <div class="bg-row">
+                <button class="bg-transparent-btn" :class="{ active: state.bgColor === 'transparent' }"
+                  title="Transparente" @click="state.bgColor = 'transparent'">
+                  <span class="checker" />
+                  <span class="bg-btn-label">Transparente</span>
+                </button>
+                <label class="bg-color-btn" :class="{ active: state.bgColor !== 'transparent' }" title="Elegir color">
+                  <input type="color" class="color-input"
+                    :value="state.bgColor === 'transparent' ? '#000000' : state.bgColor"
+                    @input="state.bgColor = $event.target.value" />
+                  <span class="color-preview"
+                    :style="{ background: state.bgColor === 'transparent' ? '#1a1a1a' : state.bgColor }" />
+                  <span class="bg-btn-label">Color</span>
+                </label>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ MARCO ══ -->
+      <div class="acc-item">
+        <button class="acc-header" @click="toggle('marco')">
+          <span>Marco</span>
+          <span class="chevron" :class="{ open: open.marco }"></span>
+        </button>
+        <div class="acc-body" :class="{ open: open.marco }">
+          <div class="acc-inner">
+            <section class="section">
+              <div class="frames-grid">
+                <button v-for="frame in frames" :key="frame" class="frame-btn"
+                  :class="{ active: state.frameSelected === frame }" :title="frameLabel(frame)"
+                  @click="state.frameSelected = frame">
+                  <img :src="`/frames/${frame}`" :alt="frameLabel(frame)" class="frame-thumb" />
+                  <span class="frame-name">{{ frameLabel(frame) }}</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ EXTRAS ══ -->
+      <div class="acc-item">
+        <button class="acc-header" @click="toggle('extras')">
+          <span>Extras</span>
+          <span class="chevron" :class="{ open: open.extras }"></span>
+        </button>
+        <div class="acc-body" :class="{ open: open.extras }">
+          <div class="acc-inner">
+            <section class="section">
+              <p class="label" style="margin-bottom:10px;display:block">Clic para añadir al canvas</p>
+              <div class="frames-grid">
+                <button v-for="extra in extras" :key="extra" class="frame-btn" :title="extraLabel(extra)"
+                  @click="addExtra(extra)">
+                  <img :src="`/extras/${extra}`" :alt="extraLabel(extra)" class="frame-thumb" />
+                  <span class="frame-name">{{ extraLabel(extra) }}</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
 
     </div><!-- /panel-scroll -->
+
+    <!-- ── Tab flotante + panel de objetos (estilo Photoshop) ── -->
+    <Teleport to="body">
+      <!-- Tab vertical pegado al borde derecho del sidebar -->
+      <button class="objects-tab" :class="{ open: showObjects }" @click="showObjects = !showObjects">
+        <span class="objects-tab-arrow">{{ showObjects ? '◀' : '▶' }}</span>
+        <span class="objects-tab-text">Objetos</span>
+      </button>
+
+      <!-- Panel flotante -->
+      <div v-if="showObjects" class="layers-float" :style="{ left: panelX + 'px', top: panelY + 'px' }">
+        <!-- Barra de título / drag handle -->
+        <div class="lf-header" @mousedown.prevent="startDrag">
+          <span class="lf-title">Objetos</span>
+          <button class="lf-close" @click="showObjects = false">✕</button>
+        </div>
+
+        <!-- Lista de capas -->
+        <div class="lf-body">
+          <div v-for="id in [...state.zOrder].reverse()" :key="id" class="lf-row"
+            :class="{ 'lf-row--active': state.selectedItemId === id }" @click="state.selectedItemId = id">
+            <span class="lf-label">{{ itemLabel(id) }}</span>
+            <div class="lf-actions">
+              <button class="lf-btn" title="Subir" :disabled="state.zOrder.indexOf(id) === state.zOrder.length - 1"
+                @click="moveItemUp(id)">↑</button>
+              <button class="lf-btn" title="Bajar" :disabled="state.zOrder.indexOf(id) === 0"
+                @click="moveItemDown(id)">↓</button>
+              <button v-if="id !== 'mainText' && id !== 'subText'" class="lf-btn lf-btn--remove" title="Eliminar"
+                @click="removeExtra(id)">✕</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- ── Exportar ── -->
     <footer class="panel-footer">
@@ -190,27 +242,24 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
       <div class="about">
         <p class="about-title">Creado por <strong>black7in</strong></p>
         <div class="about-links">
-          <a
-            href="https://github.com/black7in"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="about-link"
-          >
+          <a href="https://github.com/black7in" target="_blank" rel="noopener noreferrer" class="about-link">
             <svg class="about-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.34-3.369-1.34-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.579.688.481C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
+              <path
+                d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.34-3.369-1.34-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.579.688.481C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
             </svg>
             GitHub
           </a>
           <span class="about-link about-discord">
             <svg class="about-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+              <path
+                d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
             </svg>
             black7in
           </span>
         </div>
         <p class="about-submit">
           ¿Tienes un diseño de marco o fuente?<br>
-          <span class="about-submit-cta">Envíalo por Discord</span>
+          <span class="about-submit-cta">Colabora con un PR o envía por Discord</span>
         </p>
       </div>
     </footer>
@@ -271,6 +320,7 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   text-align: left;
   transition: background 0.1s;
 }
+
 .acc-header:hover {
   background: #1a1a1a;
 }
@@ -285,6 +335,7 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   flex-shrink: 0;
   margin-bottom: 2px;
 }
+
 .chevron.open {
   transform: rotate(45deg);
   margin-bottom: -2px;
@@ -296,9 +347,11 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.22s ease;
 }
+
 .acc-body.open {
   grid-template-rows: 1fr;
 }
+
 .acc-inner {
   overflow: hidden;
 }
@@ -308,6 +361,7 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   padding: 14px 16px;
   border-bottom: 1px solid #1c1c1c;
 }
+
 .section:last-child {
   border-bottom: none;
 }
@@ -330,7 +384,9 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   font-size: 11px;
 }
 
-.mt { margin-top: 12px; }
+.mt {
+  margin-top: 12px;
+}
 
 /* ── Input texto ── */
 .text-input {
@@ -345,8 +401,14 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   outline: none;
   transition: border-color 0.15s;
 }
-.text-input::placeholder { color: #444; }
-.text-input:focus { border-color: #fff; }
+
+.text-input::placeholder {
+  color: #444;
+}
+
+.text-input:focus {
+  border-color: #fff;
+}
 
 /* ── Fuentes ── */
 .font-list {
@@ -354,6 +416,7 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   flex-direction: column;
   gap: 3px;
 }
+
 .font-btn {
   background: transparent;
   border: 1px solid #2a2a2a;
@@ -366,11 +429,25 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   transition: all 0.1s;
   text-transform: capitalize;
 }
-.font-btn:hover { border-color: #555; color: #ccc; }
-.font-btn.active { border-color: #fff; background: #fff; color: #000; font-weight: 600; }
+
+.font-btn:hover {
+  border-color: #555;
+  color: #ccc;
+}
+
+.font-btn.active {
+  border-color: #fff;
+  background: #fff;
+  color: #000;
+  font-weight: 600;
+}
 
 /* ── Sliders ── */
-.slider { width: 100%; accent-color: #fff; cursor: pointer; }
+.slider {
+  width: 100%;
+  accent-color: #fff;
+  cursor: pointer;
+}
 
 /* ── Marcos ── */
 .frames-grid {
@@ -378,6 +455,7 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   grid-template-columns: 1fr 1fr;
   gap: 5px;
 }
+
 .frame-btn {
   background: #000;
   border: 1px solid #2a2a2a;
@@ -390,8 +468,15 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   align-items: center;
   gap: 4px;
 }
-.frame-btn:hover { border-color: #666; }
-.frame-btn.active { border-color: #fff; }
+
+.frame-btn:hover {
+  border-color: #666;
+}
+
+.frame-btn.active {
+  border-color: #fff;
+}
+
 .frame-thumb {
   width: 100%;
   aspect-ratio: 5 / 3;
@@ -399,6 +484,7 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   border-radius: 2px;
   display: block;
 }
+
 .frame-name {
   font-size: 9px;
   color: #444;
@@ -408,7 +494,10 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   text-overflow: ellipsis;
   max-width: 100%;
 }
-.frame-btn.active .frame-name { color: #fff; }
+
+.frame-btn.active .frame-name {
+  color: #fff;
+}
 
 /* ── Fondo ── */
 .bg-row {
@@ -416,6 +505,7 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   grid-template-columns: 1fr 1fr;
   gap: 5px;
 }
+
 .bg-transparent-btn,
 .bg-color-btn {
   display: flex;
@@ -429,15 +519,28 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   transition: border-color 0.1s;
   background: #000;
 }
-.bg-transparent-btn:hover, .bg-color-btn:hover { border-color: #555; }
-.bg-transparent-btn.active, .bg-color-btn.active { border-color: #fff; }
+
+.bg-transparent-btn:hover,
+.bg-color-btn:hover {
+  border-color: #555;
+}
+
+.bg-transparent-btn.active,
+.bg-color-btn.active {
+  border-color: #fff;
+}
+
 .checker {
   width: 28px;
   height: 28px;
   border-radius: 2px;
   background: repeating-conic-gradient(#555 0% 25%, #222 0% 50%) 0 0 / 8px 8px;
 }
-.color-input { display: none; }
+
+.color-input {
+  display: none;
+}
+
 .color-preview {
   width: 28px;
   height: 28px;
@@ -445,14 +548,18 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   border: 1px solid #333;
   display: block;
 }
+
 .bg-btn-label {
   font-size: 9px;
   color: #555;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+
 .bg-transparent-btn.active .bg-btn-label,
-.bg-color-btn.active .bg-btn-label { color: #fff; }
+.bg-color-btn.active .bg-btn-label {
+  color: #fff;
+}
 
 /* ── Export ── */
 .panel-footer {
@@ -460,6 +567,7 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   border-top: 1px solid #222;
   flex-shrink: 0;
 }
+
 .export-btn {
   width: 100%;
   padding: 10px;
@@ -474,8 +582,15 @@ function fontLabel(n)  { return n.replace(/-/g, ' ') }
   cursor: pointer;
   transition: background 0.1s;
 }
-.export-btn:hover { background: #ddd; }
-.export-btn:active { background: #bbb; transform: translateY(1px); }
+
+.export-btn:hover {
+  background: #ddd;
+}
+
+.export-btn:active {
+  background: #bbb;
+  transform: translateY(1px);
+}
 
 /* ── About / Créditos ── */
 .about {
@@ -547,13 +662,223 @@ a.about-link:hover {
 
 .about-submit {
   font-size: 9px;
-  color: #3a3a3a;
+  color: #757575;
   text-align: center;
   line-height: 1.5;
 }
 
 .about-submit-cta {
-  color: #555;
+  color: #7c7c7c;
   font-weight: 600;
+}
+
+/* (sin estilos extra en scoped — el tab usa estilos globales abajo) */
+</style>
+
+<!-- Estilos del tab + panel flotante: NO scoped porque viven en <Teleport to="body"> -->
+<style>
+/* ── Tab horizontal "Objetos" ── */
+.objects-tab {
+  position: fixed;
+  left: 260px;
+  /* borde derecho del sidebar */
+  top: 50px;
+  /* alineado con el primer acordeón */
+  transform: none;
+  z-index: 200;
+  padding: 5px 8px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-left: none;
+  border-radius: 0 5px 5px 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.objects-tab:hover {
+  background: #252525;
+  border-color: #666;
+}
+
+.objects-tab.open {
+  border-color: #fff;
+  background: #222;
+}
+
+.objects-tab-arrow {
+  font-size: 7px;
+  color: #555;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.objects-tab:hover .objects-tab-arrow {
+  color: #aaa;
+}
+
+.objects-tab.open .objects-tab-arrow {
+  color: #fff;
+}
+
+.objects-tab-text {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #555;
+  line-height: 1;
+  transition: color 0.15s;
+  font-family: inherit;
+}
+
+.objects-tab:hover .objects-tab-text {
+  color: #aaa;
+}
+
+.objects-tab.open .objects-tab-text {
+  color: #fff;
+}
+
+.layers-float {
+  position: fixed;
+  z-index: 9999;
+  width: 200px;
+  background: #161616;
+  border: 1px solid #333;
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  font-family: inherit;
+  user-select: none;
+}
+
+.lf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #2a2a2a;
+  border-radius: 4px 4px 0 0;
+  cursor: grab;
+}
+
+.lf-header:active {
+  cursor: grabbing;
+}
+
+.lf-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #888;
+}
+
+.lf-close {
+  background: transparent;
+  border: none;
+  color: #555;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.1s;
+}
+
+.lf-close:hover {
+  color: #fff;
+}
+
+.lf-body {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.lf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 7px;
+  border: 1px solid #252525;
+  border-radius: 3px;
+  background: #0d0d0d;
+  transition: border-color 0.1s, background 0.1s;
+  cursor: pointer;
+}
+
+.lf-row:hover {
+  background: #141414;
+  border-color: #444;
+}
+
+.lf-row--active {
+  border-color: #fff;
+  background: #111;
+}
+
+.lf-label {
+  font-size: 10px;
+  color: #666;
+  text-transform: capitalize;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lf-row--active .lf-label {
+  color: #fff;
+}
+
+.lf-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.lf-btn {
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  border-radius: 2px;
+  color: #555;
+  font-size: 11px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+  line-height: 1;
+}
+
+.lf-btn:hover:not(:disabled) {
+  border-color: #fff;
+  color: #fff;
+}
+
+.lf-btn:disabled {
+  opacity: 0.2;
+  cursor: default;
+}
+
+.lf-btn--remove {
+  border-color: #3a1a1a;
+  color: #833;
+}
+
+.lf-btn--remove:hover:not(:disabled) {
+  border-color: #f44;
+  color: #f44;
 }
 </style>

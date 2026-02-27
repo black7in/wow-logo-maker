@@ -5,3 +5,7 @@ declare module 'virtual:fonts' {
 declare module 'virtual:frames' {
   export const frames: string[]
 }
+
+declare module 'virtual:extras' {
+  export const extras: string[]
+}
